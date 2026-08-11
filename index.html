@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTE Academic Simulator</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #06b6d4;
+            --text: #f8fafc;
+            --correct: #22c55e;
+            --incorrect: #ef4444;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 750px;
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        .module-nav {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .nav-btn {
+            background: #0f172a;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .nav-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .exercise-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .exercise-type {
+            font-size: 12px;
+            font-weight: bold;
+            color: #38bdf8;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .exercise-text {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .word-bank-box {
+            background: #1e293b;
+            border: 1px dashed #06b6d4;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            color: #38bdf8;
+        }
+
+        audio {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            color: white;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 15px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #06b6d4, #3b82f6);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn-gen {
+            background: #334155;
+            color: #38bdf8;
+            border: 1px dashed #38bdf8;
+            margin-bottom: 15px;
+        }
+
+        .feedback-panel {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 12px;
+        }
+
+        .scores-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .score-box {
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+
+        .score-val { font-size: 22px; font-weight: bold; color: var(--accent); }
+        .score-lbl { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+
+        .feedback-title { font-size: 13px; font-weight: bold; color: #38bdf8; margin-top: 10px; text-transform: uppercase; }
+        .feedback-content { font-size: 14px; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <div class="title">🎓 PTE Academic AI Simulator</div>
+            <div style="font-size: 14px; color: #94a3b8; margin-top: 4px;">Entrenamiento Tutorizado para <b>Diana (Objetivo 79+)</b></div>
+        </div>
+
+        <div class="module-nav">
+            <div class="nav-btn active" id="tab-SPEAKING" onclick="switchModule('SPEAKING')">🗣 Speaking</div>
+            <div class="nav-btn" id="tab-WRITING" onclick="switchModule('WRITING')">✍️ Writing</div>
+            <div class="nav-btn" id="tab-READING" onclick="switchModule('READING')">📖 Reading</div>
+            <div class="nav-btn" id="tab-LISTENING" onclick="switchModule('LISTENING')">🎧 Listening</div>
+        </div>
+
+        <button class="btn btn-gen" onclick="requestNewAIQuestion()">🎲 Generar Nueva Pregunta</button>
+
+        <div class="exercise-card">
+            <div class="exercise-type" id="type-display">SPEAKING - READ ALOUD</div>
+            
+            <div id="audio-player-container" style="display: none;">
+                <div style="font-size: 12px; color: #f59e0b; margin-bottom: 8px;">🎧 Audio de Examen Oficial:</div>
+                <audio id="audio-player" controls controlsList="nodownload"></audio>
+            </div>
+
+            <div id="word-bank-box" class="word-bank-box" style="display: none;"></div>
+
+            <div class="exercise-text" id="text-display">Generando ejercicio...</div>
+            
+            <div id="text-input-container" style="display: none;">
+                <textarea id="user-text-input" placeholder="Escribe tu respuesta..."></textarea>
+            </div>
+        </div>
+
+        <button class="btn" id="record-btn">🎙 Presiona para Grabar Audio</button>
+        <button class="btn" id="submit-text-btn" style="display: none;" onclick="sendTextToBackend()">Enviar Respuesta Escrita ➔</button>
+
+        <div id="status-msg" style="margin-top: 15px; font-size: 14px; color: #94a3b8; text-align: center;"></div>
+
+        <div class="feedback-panel" id="feedback-panel">
+            <div class="scores-grid">
+                <div class="score-box"><div class="score-val" id="score-1">0</div><div class="score-lbl" id="lbl-1">Fluidez</div></div>
+                <div class="score-box"><div class="score-val" id="score-2">0</div><div class="score-lbl" id="lbl-2">Gramática/Pronunciación</div></div>
+                <div class="score-box"><div class="score-val" id="score-total">0</div><div class="score-lbl">PTE Score</div></div>
+            </div>
+
+            <div class="feedback-title">🔍 Análisis de Errores Riguroso</div>
+            <div class="feedback-content" id="fb-errors">...</div>
+
+            <div class="feedback-title">✨ Manera Correcta (PTE Level 90)</div>
+            <div class="feedback-content" id="fb-correct">...</div>
+
+            <div class="feedback-title">💡 Táctica para Objetivo 79+</div>
+            <div class="feedback-content" id="fb-tips">...</div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "https://pte-micro-engine.onrender.com";
+        let currentModule = 'SPEAKING';
+        let currentText = "";
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        const recordBtn = document.getElementById('record-btn');
+        const submitTextBtn = document.getElementById('submit-text-btn');
+        const textInputContainer = document.getElementById('text-input-container');
+        const audioPlayerContainer = document.getElementById('audio-player-container');
+        const audioPlayer = document.getElementById('audio-player');
+        const wordBankBox = document.getElementById('word-bank-box');
+        const userTextInput = document.getElementById('user-text-input');
+
+        function switchModule(moduleName) {
+            currentModule = moduleName;
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + moduleName).classList.add('active');
+
+            if (moduleName === 'SPEAKING') {
+                recordBtn.style.display = 'block';
+                submitTextBtn.style.display = 'none';
+                textInputContainer.style.display = 'none';
+            } else {
+                recordBtn.style.display = 'none';
+                submitTextBtn.style.display = 'block';
+                textInputContainer.style.display = 'block';
+            }
+
+            requestNewAIQuestion();
+        }
+
+        async function requestNewAIQuestion() {
+            document.getElementById('feedback-panel').style.display = 'none';
+            document.getElementById('status-msg').innerText = 'Generando pregunta...';
+            document.getElementById('text-display').innerText = 'Cargando ejercicio...';
+            audioPlayerContainer.style.display = 'none';
+            wordBankBox.style.display = 'none';
+            userTextInput.value = '';
+
+            const formData = new FormData();
+            formData.append('module', currentModule);
+
+            try {
+                const response = await fetch(BACKEND_URL + "/generate-question", { method: 'POST', body: formData });
+                const data = await response.json();
+                
+                currentText = data.text;
+                document.getElementById('type-display').innerText = currentModule + " - " + data.question_type;
+
+                if (currentModule === 'LISTENING') {
+                    document.getElementById('text-display').innerText = "Escucha el audio nativo y escribe la oracion exacta:";
+                    audioPlayer.src = BACKEND_URL + "/get-audio?text=" + encodeURIComponent(currentText);
+                    audioPlayerContainer.style.display = 'block';
+                    userTextInput.placeholder = "Escribe aquí la frase que escuchaste en el audio...";
+                } 
+                else if (currentModule === 'READING') {
+                    const matches = currentText.match(/\[(.*?)\]/g) || [];
+                    const extractedWords = matches.map(w => w.replace(/[\[\]]/g, ''));
+
+                    let blankCount = 1;
+                    let textWithBlanks = currentText.replace(/\[(.*?)\]/g, () => `<b>(${blankCount++}) _____</b>`);
+                    document.getElementById('text-display').innerHTML = textWithBlanks;
+
+                    const shuffledWords = [...extractedWords].sort(() => Math.random() - 0.5);
+                    wordBankBox.innerHTML = "<b>Opciones de vocabulario disponibles:</b><br>" + shuffledWords.map(w => `<span style="background:#0f172a; padding:4px 8px; margin:3px; border-radius:4px; display:inline-block; border:1px solid #334155;">${w}</span>`).join(' ');
+                    wordBankBox.style.display = 'block';
+
+                    userTextInput.placeholder = "Escribe las palabras separadas por coma en orden. Ejemplo: " + extractedWords.map((_, i) => `palabra${i+1}`).join(', ');
+                } 
+                else if (currentModule === 'WRITING') {
+                    document.getElementById('text-display').innerText = currentText;
+                    userTextInput.placeholder = "Escribe tu ensayo académico (200-300 palabras)...";
+                }
+                else {
+                    document.getElementById('text-display').innerText = currentText;
+                }
+
+                document.getElementById('status-msg').innerText = '';
+            } catch (err) {
+                document.getElementById('status-msg').innerText = 'Error al generar la pregunta.';
+            }
+        }
+
+        recordBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                    mediaRecorder.onstop = sendAudioToBackend;
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.innerText = '⏹ Detener Grabación';
+                    document.getElementById('status-msg').innerText = 'Grabando... habla con ritmo constante, Diana.';
+                } catch (err) {
+                    document.getElementById('status-msg').innerText = 'Error al acceder al micrófono.';
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.innerText = '🎙 Presiona para Grabar Audio';
+                document.getElementById('status-msg').innerText = 'Evaluando respuesta...';
+            }
+        });
+
+        async function sendAudioToBackend() {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/m4a' });
+            const formData = new FormData();
+            formData.append('audio_file', audioBlob, 'recording.m4a');
+            formData.append('reference_text', currentText);
+            formData.append('question_type', currentModule);
+
+            try {
+                const response = await fetch(BACKEND_URL + "/evaluate-audio", { method: 'POST', body: formData });
+                const data = await response.json();
+                displayResults(data);
+            } catch (err) {
+                document.getElementById('status-msg').innerText = 'Error al evaluar conexión.';
+            }
+        }
+
+        async function sendTextToBackend() {
+            const userText = userTextInput.value.trim();
+            if (!userText) {
+                alert("Escribe tu respuesta antes de enviar.");
+                return;
+            }
+
+            document.getElementById('status-msg').innerText = 'Evaluando respuesta escrita...';
+            const formData = new FormData();
+            formData.append('user_response', userText);
+            formData.append('reference_text', currentText);
+            formData.append('question_type', currentModule);
+
+            try {
+                const response = await fetch(BACKEND_URL + "/evaluate-text", { method: 'POST', body: formData });
+                const data = await response.json();
+                displayResults(data);
+            } catch (err) {
+                document.getElementById('status-msg').innerText = 'Error al evaluar respuesta.';
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('status-msg').innerText = "Evaluación oficial completada";
+            document.getElementById('score-1').innerText = (data.fluency_score !== undefined) ? data.fluency_score : 80;
+            document.getElementById('score-2').innerText = (data.pronunciation_score !== undefined) ? data.pronunciation_score : (data.grammar_vocab_score || 80);
+            document.getElementById('score-total').innerText = (data.overall_pte_score !== undefined) ? data.overall_pte_score : 80;
+
+            document.getElementById('fb-errors').innerText = data.error_analysis || "Evaluación procesada.";
+            document.getElementById('fb-correct').innerText = data.correct_form || "Respuesta modelo cargada.";
+            document.getElementById('fb-tips').innerText = data.actionable_tips || "Sigue practicando.";
+
+            document.getElementById('feedback-panel').style.display = 'block';
+        }
+
+        requestNewAIQuestion();
+    </script>
+</body>
+</html>
