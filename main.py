@@ -89,11 +89,10 @@ async def generate_question(module: str = Form(...)):
 @app.get("/get-audio")
 async def get_audio(text: str):
     try:
-        # Rotación aleatoria de acentos nativos (EE. UU., Reino Unido, Australia)
         accents = [
-            {'tld': 'us', 'lang': 'en'}, # American English
-            {'tld': 'co.uk', 'lang': 'en'}, # British English
-            {'tld': 'com.au', 'lang': 'en'} # Australian English
+            {'tld': 'us', 'lang': 'en'},
+            {'tld': 'co.uk', 'lang': 'en'},
+            {'tld': 'com.au', 'lang': 'en'}
         ]
         chosen_accent = random.choice(accents)
 
@@ -191,26 +190,28 @@ async def evaluate_text(
     try:
         prompt = f"""You are a RIGOROUS Pearson PTE Academic AI Examiner evaluating Diana's written/reading response.
 Question Type: {question_type}
-Prompt/Reference: "{reference_text}"
-Diana's Response: "{user_response}"
+Reference/Prompt Text: "{reference_text}"
+Diana's Input Response: "{user_response}"
 
-Evaluate strictly according to official Pearson criteria (0-90):
-- Grammar, Spelling, Vocabulary, and Structural Coherence.
-- For Write From Dictation: Exact word-for-word matching.
+Special Rules for READING (Fill in the Blanks):
+- Diana might enter either the full completed paragraph OR just the list of words (comma separated or numbered).
+- Check if the key vocabulary words from the brackets in Reference Text match Diana's answer in order.
+- If the words match, give full scores (85-90).
 
 Return ONLY raw JSON (NO Markdown):
 {{
   "transcription": "{user_response}",
   "fluency_score": 85,
   "pronunciation_score": 85,
-  "grammar_vocab_score": 72,
-  "overall_pte_score": 75,
-  "status": "RETRY",
+  "grammar_vocab_score": 88,
+  "overall_pte_score": 86,
+  "status": "PASS",
   "words_result": [],
-  "error_analysis": "Explicación detallada en español de errores de ortografía, gramática o palabras omitidas.",
-  "correct_form": "Respuesta perfeccionada para nivel 90.",
-  "actionable_tips": "Consejo directo para maximizar la nota en esta sección."
+  "error_analysis": "Análisis detallado en español de la precisión y ortografía de Diana.",
+  "correct_form": "{reference_text}",
+  "actionable_tips": "Consejo técnico para la sección de PTE Academic."
 }}
+Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_score are ALL valid integers (0-90).
 """
 
         completion = client.chat.completions.create(
@@ -220,7 +221,15 @@ Return ONLY raw JSON (NO Markdown):
         )
 
         cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", completion.choices[0].message.content.strip(), flags=re.MULTILINE).strip()
-        return PTEEvaluationResponse(**json.loads(cleaned_json))
+        data = json.loads(cleaned_json)
+        
+        # Garantizar que ningún campo retorne None/undefined
+        if "fluency_score" not in data or data["fluency_score"] is None:
+            data["fluency_score"] = data.get("overall_pte_score", 80)
+        if "pronunciation_score" not in data or data["pronunciation_score"] is None:
+            data["pronunciation_score"] = data.get("grammar_vocab_score", 80)
+
+        return PTEEvaluationResponse(**data)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -228,4 +237,4 @@ Return ONLY raw JSON (NO Markdown):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "PTE Audio Simulator Active"}
+    return {"status": "ok", "mode": "PTE Fixed Evaluation Engine"}
