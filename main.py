@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from groq import Groq
 from gtts import gTTS
 
-app = FastAPI(title="PTE Academic Full Native Audio Simulator")
+app = FastAPI(title="PTE Academic Robust Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,7 +61,7 @@ async def generate_question(module: str = Form(...)):
         system_instruction = (
             "You are an official Pearson PTE Academic test creator. "
             "Return ONLY a raw JSON object with fields 'module', 'question_type', and 'text'. "
-            "Do NOT wrap in markdown formatting (NO ```json)."
+            "Do NOT wrap in markdown formatting."
         )
 
         user_content = f"{selected_prompt}\nReturn JSON format: {{\"module\": \"{module.upper()}\", \"question_type\": \"OFFICIAL_PTE\", \"text\": \"YOUR_GENERATED_QUESTION_HERE\"}}"
@@ -81,7 +81,7 @@ async def generate_question(module: str = Form(...)):
         return GeneratedQuestionResponse(**data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generando pregunta: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating question: {str(e)}")
 
 
 @app.get("/get-audio")
@@ -101,7 +101,7 @@ async def get_audio(text: str):
 
         return Response(content=mp3_fp.read(), media_type="audio/mpeg")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al generar audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating audio: {str(e)}")
 
 
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
@@ -142,11 +142,11 @@ Reference Text: "{reference_text}"
 Diana's Audio Transcription: "{transcribed_text}"
 
 Evaluate strictly according to Pearson PTE Score Matrix (0-90):
-1. Oral Fluency (0-90): Penalize hesitations, self-corrections, pauses (>1s), and unnatural speed.
-2. Pronunciation (0-90): Phoneme clarity and correct stress.
+1. Oral Fluency (0-90)
+2. Pronunciation (0-90)
 3. Overall Score: Target >= 79.
 
-Return ONLY raw JSON (NO Markdown):
+Return ONLY raw JSON:
 {{
   "transcription": "{transcribed_text}",
   "fluency_score": 70,
@@ -157,11 +157,11 @@ Return ONLY raw JSON (NO Markdown):
   "words_result": [
     {{"word": "example", "status": "correct"}}
   ],
-  "error_analysis": "Análisis riguroso en español directo para Diana indicando errores específicos.",
+  "error_analysis": "Análisis riguroso en español directo para Diana.",
   "correct_form": "Lectura modelo con pausa adecuada (chunking).",
-  "actionable_tips": "Estrategia técnica para alcanzar 79+ en el examen real."
+  "actionable_tips": "Estrategia técnica para alcanzar 79+."
 }}
-Map EVERY word of the reference text in words_result with 'correct', 'incorrect', or 'missed'.
+Map EVERY word of reference text in words_result with 'correct', 'incorrect', or 'missed'.
 """
 
         completion = client.chat.completions.create(
@@ -171,7 +171,8 @@ Map EVERY word of the reference text in words_result with 'correct', 'incorrect'
         )
 
         cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", completion.choices[0].message.content.strip(), flags=re.MULTILINE).strip()
-        return PTEEvaluationResponse(**json.loads(cleaned_json))
+        data = json.loads(cleaned_json)
+        return PTEEvaluationResponse(**data)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -184,31 +185,30 @@ async def evaluate_text(
     question_type: str = Form("Write Essay")
 ):
     try:
-        prompt = f"""You are a RIGOROUS Pearson PTE Academic AI Examiner evaluating Diana's written/reading response.
+        prompt = f"""You are a Pearson PTE Academic AI Examiner evaluating Diana.
 Question Type: {question_type}
-Reference Text: "{reference_text}"
-Diana's Answer: "{user_response}"
+Reference Text: {json.dumps(reference_text)}
+Diana's Input: {json.dumps(user_response)}
 
-STRICT RULES FOR READING (Fill in the Blanks):
-1. The student is ONLY required to type the ordered list of words (e.g. "reduced, incentives, renewable, sustainable"). Do NOT ask or expect them to write the full paragraph.
-2. Extract the bracketed words [word] from the Reference Text in order.
-3. Compare Diana's Answer with the expected bracketed words.
-4. If Diana's words match the expected bracketed words in order, give FULL SCORES (90 overall, 90 grammar, 90 fluency/pronunciation) and compliment her for the correct ordering without mentioning full paragraph formatting.
+Rules for READING:
+1. Diana only types the ordered words separated by commas or spaces.
+2. Extract the bracketed words [word] in order from Reference Text.
+3. Compare Diana's input words with expected bracketed words.
+4. If words match in order, assign score 90 for all metric fields.
 
-Return ONLY raw JSON (NO Markdown):
+Return ONLY a valid JSON object matching this key structure:
 {{
-  "transcription": "{user_response}",
+  "transcription": {json.dumps(user_response)},
   "fluency_score": 90,
   "pronunciation_score": 90,
   "grammar_vocab_score": 90,
   "overall_pte_score": 90,
   "status": "PASS",
   "words_result": [],
-  "error_analysis": "Explicación en español si hubo alguna palabra incorrecta o desordenada. Si todo está correcto, felicitar a Diana por la precisión.",
-  "correct_form": "Lista correcta de palabras en orden.",
-  "actionable_tips": "Consejo técnico clave para la sección de Reading del PTE Academic."
+  "error_analysis": "Explicación en español si hay errores o felicitación por acierto.",
+  "correct_form": {json.dumps(reference_text)},
+  "actionable_tips": "Consejo técnico para PTE Academic Reading."
 }}
-Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_score are ALL valid integers (0-90).
 """
 
         completion = client.chat.completions.create(
@@ -217,20 +217,30 @@ Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_
             temperature=0.0
         )
 
-        cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", completion.choices[0].message.content.strip(), flags=re.MULTILINE).strip()
-        data = json.loads(cleaned_json)
+        raw = completion.choices[0].message.content.strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
 
-        if "fluency_score" not in data or data["fluency_score"] is None:
-            data["fluency_score"] = data.get("overall_pte_score", 90)
-        if "pronunciation_score" not in data or data["pronunciation_score"] is None:
-            data["pronunciation_score"] = data.get("grammar_vocab_score", 90)
+        data = json.loads(raw)
 
-        return PTEEvaluationResponse(**data)
+        return PTEEvaluationResponse(
+            transcription=str(data.get("transcription", user_response)),
+            fluency_score=int(data.get("fluency_score", 90)),
+            pronunciation_score=int(data.get("pronunciation_score", 90)),
+            grammar_vocab_score=int(data.get("grammar_vocab_score", 90)),
+            overall_pte_score=int(data.get("overall_pte_score", 90)),
+            status="PASS" if data.get("status") == "PASS" else "RETRY",
+            words_result=data.get("words_result", []),
+            error_analysis=str(data.get("error_analysis", "Evaluación completada.")),
+            correct_form=str(data.get("correct_form", reference_text)),
+            actionable_tips=str(data.get("actionable_tips", "Continúa practicando."))
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Reading List Evaluation Fixed"}
+    return {"status": "ok", "mode": "Safe JSON Parsing Enabled"}
