@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from groq import Groq
 from gtts import gTTS
 
-app = FastAPI(title="PTE Academic Robust Engine")
+app = FastAPI(title="PTE Academic Pedagogical Engine for Diana")
 
 app.add_middleware(
     CORSMiddleware,
@@ -81,7 +81,7 @@ async def generate_question(module: str = Form(...)):
         return GeneratedQuestionResponse(**data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating question: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generando pregunta: {str(e)}")
 
 
 @app.get("/get-audio")
@@ -101,7 +101,7 @@ async def get_audio(text: str):
 
         return Response(content=mp3_fp.read(), media_type="audio/mpeg")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generando audio: {str(e)}")
 
 
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
@@ -131,37 +131,45 @@ async def evaluate_audio(
                 overall_pte_score=0,
                 status="RETRY",
                 words_result=[WordResult(word=w, status="missed") for w in reference_text.split()],
-                error_analysis="CERO PUNTOS: No se detectó voz clara en tu respuesta, Diana.",
-                correct_form=reference_text,
-                actionable_tips="En el examen oficial de PTE, si hay 3 segundos de silencio el micrófono se apaga automáticamente."
+                error_analysis="❌ Error: No se detectó audio comprensible en el intento.\n🤔 Causa: El micrófono no captó suficiente volumen o tardaste más de 3 segundos en hablar.\n💡 Qué hacer: Haz una pausa de medio segundo tras presionar el botón y habla firme sin dudar.",
+                correct_form=f"MUESTRA CORRECTA:\n{reference_text}",
+                actionable_tips="🚀 Táctica PTE: Si el micrófono detecta 3 segundos de silencio absoluto, Pearson inhabilita automáticamente la grabación de la pregunta."
             )
 
-        prompt = f"""You are a RIGOROUS Pearson PTE Academic AI Examiner assessing Diana's Speaking.
+        prompt = f"""You are a professional, empathetic, and strict Pearson PTE Academic AI Examiner tutoring student Diana.
 Question Type: {question_type}
-Reference Text: "{reference_text}"
-Diana's Audio Transcription: "{transcribed_text}"
+Reference Text: {json.dumps(reference_text)}
+Diana's Audio Transcription: {json.dumps(transcribed_text)}
 
-Evaluate strictly according to Pearson PTE Score Matrix (0-90):
-1. Oral Fluency (0-90)
-2. Pronunciation (0-90)
-3. Overall Score: Target >= 79.
+EVALUATION INSTRUCTIONS FOR DIANA:
+Be extremely professional, encouraging, structured, and clear.
+Provide 'error_analysis' in SPANISH following EXACTLY these 3 points:
+1. ❌ **Corrección exacta de lo que se equivocó**: Highlight missing or mispronounced words.
+2. 🤔 **Por qué ocurrió el error**: Explain the technical reason (e.g., hesitated, missed plural '-s', intonation drop).
+3. 💡 **Qué podrías hacer ahora**: Instant practical advice for her next attempt.
 
-Return ONLY raw JSON:
+Provide 'correct_form' as:
+4. ✨ **Manera Correcta (PTE Level 90)**: Show the text with proper pause markers (chunking like "The study of climate change / requires global cooperation / ...").
+
+Provide 'actionable_tips' as:
+5. 🚀 **Cómo mejorar para el examen real**: Provide a concrete Pearson test-taking strategy.
+
+Return ONLY a valid JSON matching this key structure:
 {{
-  "transcription": "{transcribed_text}",
-  "fluency_score": 70,
-  "pronunciation_score": 75,
+  "transcription": {json.dumps(transcribed_text)},
+  "fluency_score": 75,
+  "pronunciation_score": 78,
   "grammar_vocab_score": 80,
-  "overall_pte_score": 73,
-  "status": "RETRY",
+  "overall_pte_score": 77,
+  "status": "PASS",
   "words_result": [
     {{"word": "example", "status": "correct"}}
   ],
-  "error_analysis": "Análisis riguroso en español directo para Diana.",
-  "correct_form": "Lectura modelo con pausa adecuada (chunking).",
-  "actionable_tips": "Estrategia técnica para alcanzar 79+."
+  "error_analysis": "1. ❌ Corrección de errores: ...\n\n2. 🤔 Por qué ocurrió: ...\n\n3. 💡 Qué podrías hacer ahora: ...",
+  "correct_form": "4. ✨ Manera Correcta (PTE Level 90):\n...",
+  "actionable_tips": "5. 🚀 Táctica para el examen real:\n..."
 }}
-Map EVERY word of reference text in words_result with 'correct', 'incorrect', or 'missed'.
+Ensure numeric scores are integers (0-90).
 """
 
         completion = client.chat.completions.create(
@@ -170,12 +178,16 @@ Map EVERY word of reference text in words_result with 'correct', 'incorrect', or
             temperature=0.0
         )
 
-        cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", completion.choices[0].message.content.strip(), flags=re.MULTILINE).strip()
-        data = json.loads(cleaned_json)
+        raw = completion.choices[0].message.content.strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+
+        data = json.loads(raw)
         return PTEEvaluationResponse(**data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error evaluando audio: {str(e)}")
 
 
 @app.post("/evaluate-text", response_model=PTEEvaluationResponse)
@@ -185,16 +197,24 @@ async def evaluate_text(
     question_type: str = Form("Write Essay")
 ):
     try:
-        prompt = f"""You are a Pearson PTE Academic AI Examiner evaluating Diana.
+        prompt = f"""You are a professional, empathetic, and strict Pearson PTE Academic AI Examiner tutoring student Diana.
 Question Type: {question_type}
-Reference Text: {json.dumps(reference_text)}
-Diana's Input: {json.dumps(user_response)}
+Reference/Prompt Text: {json.dumps(reference_text)}
+Diana's Response Input: {json.dumps(user_response)}
 
-Rules for READING:
-1. Diana only types the ordered words separated by commas or spaces.
-2. Extract the bracketed words [word] in order from Reference Text.
-3. Compare Diana's input words with expected bracketed words.
-4. If words match in order, assign score 90 for all metric fields.
+EVALUATION INSTRUCTIONS FOR DIANA:
+Be extremely professional, encouraging, structured, and clear.
+
+Provide 'error_analysis' in SPANISH following EXACTLY these 3 points:
+1. ❌ **Corrección exacta de lo que se equivocó**: Identify missing words, order mismatch, or spelling/grammar flaws.
+2. 🤔 **Por qué ocurrió el error**: Explain the linguistic reason (e.g., collocation rule, part of speech mismatch, typing error).
+3. 💡 **Qué podrías hacer ahora**: Practical step-by-step fix for her next attempt.
+
+Provide 'correct_form' as:
+4. ✨ **Manera Correcta (PTE Level 90)**: Show the ideal answers/paragraph structure.
+
+Provide 'actionable_tips' as:
+5. 🚀 **Cómo mejorar para el examen real**: Key Pearson PTE test technique.
 
 Return ONLY a valid JSON object matching this key structure:
 {{
@@ -205,10 +225,11 @@ Return ONLY a valid JSON object matching this key structure:
   "overall_pte_score": 90,
   "status": "PASS",
   "words_result": [],
-  "error_analysis": "Explicación en español si hay errores o felicitación por acierto.",
-  "correct_form": {json.dumps(reference_text)},
-  "actionable_tips": "Consejo técnico para PTE Academic Reading."
+  "error_analysis": "1. ❌ Corrección de errores: ...\n\n2. 🤔 Por qué ocurrió: ...\n\n3. 💡 Qué podrías hacer ahora: ...",
+  "correct_form": "4. ✨ Manera Correcta (PTE Level 90):\n...",
+  "actionable_tips": "5. 🚀 Táctica para el examen real:\n..."
 }}
+Ensure numeric scores are integers (0-90).
 """
 
         completion = client.chat.completions.create(
@@ -243,4 +264,4 @@ Return ONLY a valid JSON object matching this key structure:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Safe JSON Parsing Enabled"}
+    return {"status": "ok", "mode": "5-Pillar Pedagogical Tutor Active"}
