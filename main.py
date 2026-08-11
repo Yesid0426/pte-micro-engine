@@ -1,15 +1,14 @@
 import os
 import json
 import re
-from typing import List, Literal
+from typing import List, Literal, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from groq import Groq
 
-app = FastAPI(title="PTE Micro-Exam Engine - Groq Free Tier")
+app = FastAPI(title="PTE Academic AI Tutor - Diana's Preparation")
 
-# Permitir solicitudes CORS desde archivos locales u otros orígenes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicializar cliente de Groq
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
@@ -29,25 +27,29 @@ class WordResult(BaseModel):
 class PTEEvaluationResponse(BaseModel):
     transcription: str
     fluency_score: int
-    accuracy_score: int
+    pronunciation_score: int
+    overall_pte_score: int
     status: Literal["PASS", "RETRY"]
     words_result: List[WordResult]
+    error_analysis: str
+    correct_form: str
+    actionable_tips: str
 
 
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
 async def evaluate_audio(
     audio_file: UploadFile = File(...),
-    reference_text: str = Form(...)
+    reference_text: str = Form(...),
+    question_type: str = Form("Read Aloud")
 ):
     try:
-        # 1. Leer audio y transcribir con Whisper en Groq
         audio_content = await audio_file.read()
         
-        # Nombre de archivo asegurado con extensión compatible
         filename = audio_file.filename if audio_file.filename else "audio.m4a"
-        if not (filename.endswith(".m4a") or filename.endswith(".wav") or filename.endswith(".webm") or filename.endswith(".mp3")):
+        if not any(filename.endswith(ext) for ext in [".m4a", ".wav", ".webm", ".mp3"]):
             filename = "recording.m4a"
 
+        # 1. Transcripción con Whisper
         transcription_response = client.audio.transcriptions.create(
             file=(filename, audio_content),
             model="whisper-large-v3-turbo",
@@ -56,44 +58,51 @@ async def evaluate_audio(
         )
         transcribed_text = transcription_response.text.strip()
 
-        # Si no se detectó voz
         if not transcribed_text:
             return PTEEvaluationResponse(
                 transcription="",
                 fluency_score=0,
-                accuracy_score=0,
+                pronunciation_score=0,
+                overall_pte_score=0,
                 status="RETRY",
-                words_result=[
-                    WordResult(word=w, status="missed") 
-                    for w in reference_text.split()
-                ]
+                words_result=[WordResult(word=w, status="missed") for w in reference_text.split()],
+                error_analysis="No detectamos sonido claro en tu grabación, Diana.",
+                correct_form=reference_text,
+                actionable_tips="Asegúrate de hablar cerca del micrófono en un entorno silencioso y sin pausar al inicio."
             )
 
-        # 2. Evaluación con Llama 3.3 en Groq
+        # 2. Evaluación pedagógica especializada en PTE para Diana
         prompt = f"""
-You are a PTE Academic exam pronunciation evaluator.
-Compare the transcribed text with the reference text.
+You are an expert PTE Academic AI Examiner creating a personalized evaluation report for student "Diana".
+The exercise type is: {question_type}.
 
-Reference text: "{reference_text}"
-User transcription: "{transcribed_text}"
+Reference Text / Model Answer: "{reference_text}"
+Diana's Spoken Transcription: "{transcribed_text}"
 
-Respond ONLY with a valid raw JSON object (no markdown formatting, no json  blocks).
-Use this exact JSON structure:
+Evaluate Diana strictly according to Pearson PTE Academic standards:
+- Oral Fluency (0-90): Smooth rhythm, constant speed, zero self-corrections, no hesitation ("um", "eh").
+- Pronunciation (0-90): Clarity of speech, correct word stress.
+- Overall PTE Score (0-90): Weighted average.
+
+Provide your response strictly in raw valid JSON (NO Markdown codeblocks, NO ```json):
 {{
   "transcription": "{transcribed_text}",
-  "fluency_score": 85,
-  "accuracy_score": 90,
+  "fluency_score": 78,
+  "pronunciation_score": 82,
+  "overall_pte_score": 80,
   "status": "PASS",
   "words_result": [
-    {{"word": "word1", "status": "correct"}},
-    {{"word": "word2", "status": "incorrect"}}
-  ]
+    {{"word": "example", "status": "correct"}}
+  ],
+  "error_analysis": "Explicación detallada en español para Diana de dónde falló (palabras omitidas, pausas dudosas, errores de pronunciación).",
+  "correct_form": "Muestra la frase u oración correcta en inglés enfatizando cómo debía leerse.",
+  "actionable_tips": "Consejos tácticos específicos para que Diana suba su puntaje en el PTE Academic (ritmo, entonación, manejo del micrófono)."
 }}
 
 Rules:
-- fluency_score (0-100) and accuracy_score (0-100).
-- status: "PASS" if both scores >= 65, else "RETRY".
-- Map EVERY word from the original reference text with "correct", "incorrect", or "missed".
+- status: "PASS" if overall_pte_score >= 65, else "RETRY".
+- words_result: Map EVERY word of the original reference text with "correct", "incorrect", or "missed".
+- Write error_analysis, correct_form, and actionable_tips in supportive, professional Spanish addressed directly to Diana.
 """
 
         completion = client.chat.completions.create(
@@ -103,9 +112,7 @@ Rules:
         )
 
         raw_content = completion.choices[0].message.content.strip()
-        
-        # Limpiar bloques Markdown si el modelo los incluyó
-        cleaned_json = re.sub(r"^(?:json)?\s*|\s*$", "", raw_content, flags=re.MULTILINE).strip()
+        cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_content, flags=re.MULTILINE).strip()
         
         data = json.loads(cleaned_json)
         return PTEEvaluationResponse(**data)
@@ -116,4 +123,4 @@ Rules:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "provider": "Groq Free Tier"}
+    return {"status": "ok", "tutor": "PTE Academic - Diana Edition"}
