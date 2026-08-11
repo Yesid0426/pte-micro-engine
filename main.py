@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from groq import Groq
 from gtts import gTTS
 
-app = FastAPI(title="PTE Academic Robust Engine for Diana")
+app = FastAPI(title="PTE Academic Highly Randomized Exam Engine")
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,22 +46,57 @@ class GeneratedQuestionResponse(BaseModel):
     text: str
 
 
+# LISTA MASIVA DE TEMAS Y DISCIPLINAS ACADÉMICAS PARA FORZAR ALEATORIEDAD
+ACADEMIC_TOPICS = [
+    "astrophysics and deep space exploration",
+    "neuroscience and human cognitive memory",
+    "ancient Egyptian archaeology and urban settlements",
+    "marine biology and deep-sea ecosystem adaptation",
+    "behavioral economics and consumer psychology",
+    "quantum computing and cryptography security",
+    "microbiology and antibiotic resistance evolution",
+    "bioclimatic architecture and urban planning",
+    "linguistic anthropology and dialect evolution",
+    "artificial intelligence in healthcare diagnostics",
+    "renewable energy storage in lithium-sulfur batteries",
+    "paleontology and prehistoric climate records",
+    "international trade agreements and supply chain logistics",
+    "robotic automation in industrial manufacturing",
+    "genetic engineering and crop drought resilience",
+    "volcanology and tectonic plate mechanics",
+    "organic chemistry and molecular synthesis",
+    "cultural sociology and modern digital media",
+    "environmental toxicology and microplastics in ocean currents",
+    "philosophical ethics and moral decision-making models",
+    "hydrology and urban water conservation systems",
+    "nanotechnology applications in modern medicine",
+    "space tourism and commercial satellite operations",
+    "cognitive development in early childhood education",
+    "financial risk modeling during global market volatility"
+]
+
+
 @app.post("/generate-question", response_model=GeneratedQuestionResponse)
 async def generate_question(module: str = Form(...)):
     try:
+        # Selección aleatoria del tema académico en cada solicitud
+        random_topic = random.choice(ACADEMIC_TOPICS)
+        random_seed = random.randint(1000, 99999)
+
         prompts = {
-            "SPEAKING": "Generate a single official Pearson PTE Academic 'Read Aloud' paragraph (40-55 words) on an academic topic.",
-            "WRITING": "Generate an official Pearson PTE Academic 'Write Essay' prompt (e.g. 'Some people argue that... Write 200-300 words').",
-            "READING": "Generate an official Pearson PTE Academic 'Reading: Fill in the Blanks' passage (50-70 words) with key vocabulary words in brackets like [reduced] or [incentives].",
-            "LISTENING": "Generate an official Pearson PTE Academic 'Write From Dictation' academic sentence (9-14 words)."
+            "SPEAKING": f"Generate a single unique Pearson PTE Academic 'Read Aloud' paragraph (40-55 words) specifically focused on {random_topic}. Do NOT write about corporate productivity or employee policies. Seed: {random_seed}.",
+            "WRITING": f"Generate a unique Pearson PTE Academic 'Write Essay' prompt regarding {random_topic}. Format: 'Some experts argue that... Write 200-300 words.' Seed: {random_seed}.",
+            "READING": f"Generate a unique Pearson PTE Academic 'Reading: Fill in the Blanks' academic passage (50-70 words) about {random_topic}. Place 4-5 key academic vocabulary words in brackets like [word1], [word2], [word3], [word4]. Seed: {random_seed}.",
+            "LISTENING": f"Generate a unique Pearson PTE Academic 'Write From Dictation' sentence (9-14 words) related to {random_topic}. Seed: {random_seed}."
         }
 
         selected_prompt = prompts.get(module.upper(), prompts["SPEAKING"])
 
         system_instruction = (
-            "You are an official Pearson PTE Academic test creator. "
-            "Return ONLY a raw JSON object with fields 'module', 'question_type', and 'text'. "
-            "Do NOT wrap in markdown formatting."
+            "You are an official Pearson PTE Academic item writer. "
+            "Your highest priority is CREATIVITY and VARIETY. Never repeat sentence templates or topics. "
+            "Return ONLY a raw JSON object with keys 'module', 'question_type', and 'text'. "
+            "Do NOT wrap in markdown formatting (NO ```json)."
         )
 
         user_content = f"{selected_prompt}\nReturn JSON format: {{\"module\": \"{module.upper()}\", \"question_type\": \"OFFICIAL_PTE\", \"text\": \"YOUR_GENERATED_QUESTION_HERE\"}}"
@@ -72,7 +107,8 @@ async def generate_question(module: str = Form(...)):
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_content}
             ],
-            temperature=0.7
+            temperature=0.95,  # Alta aleatoriedad
+            top_p=0.9
         )
 
         raw_content = completion.choices[0].message.content.strip()
@@ -143,7 +179,7 @@ Diana's Audio Transcription: {json.dumps(transcribed_text)}
 
 Evaluate according to Pearson PTE Score Matrix (0-90).
 
-Return ONLY a raw JSON with NO markdown:
+Return ONLY raw JSON with NO markdown:
 {{
   "transcription": {json.dumps(transcribed_text)},
   "fluency_score": 75,
@@ -186,7 +222,6 @@ Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_
         )
 
     except Exception as e:
-        # Fallback ultra-seguro si ocurre algún detalle en el parseo
         return PTEEvaluationResponse(
             transcription="",
             fluency_score=70,
@@ -208,7 +243,6 @@ async def evaluate_text(
     question_type: str = Form("Write Essay")
 ):
     try:
-        # EVALUACIÓN DIRECTA DE READING (FILL IN THE BLANKS)
         if question_type.upper() == "READING":
             expected_words = [w.replace('[', '').replace(']', '').strip().lower() for w in re.findall(r"\[(.*?)\]", reference_text)]
             user_words = [w.strip().lower() for w in re.split(r"[,;\s]+", user_response) if w.strip()]
@@ -233,12 +267,12 @@ async def evaluate_text(
 
             err_text = (
                 f"1. ❌ Corrección exacta de lo que se equivocó:\n" + "\n".join(details) + "\n\n"
-                f"2. 🤔 Por qué ocurrió el error:\n" + ("¡Excelente precisión léxica y gramatical!" if matches == total_blanks else "Algunas palabras no corresponden al contexto o a la función gramatical requerida (sustantivo, adjetivo, verbo) en ese espacio.") + "\n\n"
+                f"2. 🤔 Por qué ocurrió el error:\n" + ("¡Excelente precisión léxica y gramatical!" if matches == total_blanks else "Algunas palabras no corresponden al contexto o a la función gramatical requerida en ese espacio.") + "\n\n"
                 f"3. 💡 Qué podrías hacer ahora:\n" + ("Mantén este mismo nivel de análisis en la siguiente pregunta." if matches == total_blanks else "Analiza el tipo de palabra que requiere el espacio antes de seleccionar de la lista.")
             )
 
             correct_str = f"4. ✨ Manera Correcta (PTE Level 90):\nLas palabras en orden exacto son: " + ", ".join(expected_words)
-            tips_str = "5. 🚀 Cómo mejorar para el examen real:\nEn PTE Reading Fill in the Blanks, la gramática descarta el 50% de las opciones incorrectas. Identifica si el espacio necesita un verbo en pasado, adjetivo o sustantivo plural."
+            tips_str = "5. 🚀 Cómo mejorar para el examen real:\nEn PTE Reading Fill in the Blanks, la gramática descarta el 50% de las opciones incorrectas."
 
             return PTEEvaluationResponse(
                 transcription=user_response,
@@ -253,7 +287,6 @@ async def evaluate_text(
                 actionable_tips=tips_str
             )
 
-        # EVALUACIÓN PARA WRITING Y LISTENING MEDIANTE LLAMA-3
         prompt = f"""You are a professional Pearson PTE Academic AI Examiner evaluating Diana.
 Question Type: {question_type}
 Reference Text: {json.dumps(reference_text)}
@@ -301,7 +334,6 @@ Return ONLY raw JSON with NO markdown formatting:
         )
 
     except Exception as e:
-        # Fallback ultra-seguro para que NUNCA devuelva error 500 al cliente
         return PTEEvaluationResponse(
             transcription=user_response,
             fluency_score=80,
@@ -318,4 +350,4 @@ Return ONLY raw JSON with NO markdown formatting:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Bulletproof PTE Evaluation Active"}
+    return {"status": "ok", "mode": "Randomized Topics Engine Active"}
