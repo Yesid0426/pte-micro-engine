@@ -46,7 +46,6 @@ class GeneratedQuestionResponse(BaseModel):
     text: str
 
 
-# --- ENDPOINT 1: GENERADOR DE PREGUNTAS INFINITAS ---
 @app.post("/generate-question", response_model=GeneratedQuestionResponse)
 async def generate_question(module: str = Form(...)):
     try:
@@ -85,7 +84,6 @@ async def generate_question(module: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Error generando pregunta: {str(e)}")
 
 
-# --- ENDPOINT 2: GENERADOR DE AUDIO EN INGLÉS NATIVO (TTS MP3) ---
 @app.get("/get-audio")
 async def get_audio(text: str):
     try:
@@ -106,7 +104,6 @@ async def get_audio(text: str):
         raise HTTPException(status_code=500, detail=f"Error al generar audio: {str(e)}")
 
 
-# --- ENDPOINT 3: EVALUACIÓN RIGUROSA DE SPEAKING (AUDIO) ---
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
 async def evaluate_audio(
     audio_file: UploadFile = File(...),
@@ -180,7 +177,6 @@ Map EVERY word of the reference text in words_result with 'correct', 'incorrect'
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- ENDPOINT 4: EVALUACIÓN RIGUROSA DE TEXTO (WRITING / READING / LISTENING) ---
 @app.post("/evaluate-text", response_model=PTEEvaluationResponse)
 async def evaluate_text(
     user_response: str = Form(...),
@@ -190,26 +186,27 @@ async def evaluate_text(
     try:
         prompt = f"""You are a RIGOROUS Pearson PTE Academic AI Examiner evaluating Diana's written/reading response.
 Question Type: {question_type}
-Reference/Prompt Text: "{reference_text}"
-Diana's Input Response: "{user_response}"
+Reference Text: "{reference_text}"
+Diana's Answer: "{user_response}"
 
-Special Rules for READING (Fill in the Blanks):
-- Diana might enter either the full completed paragraph OR just the list of words (comma separated or numbered).
-- Check if the key vocabulary words from the brackets in Reference Text match Diana's answer in order.
-- If the words match, give full scores (85-90).
+STRICT RULES FOR READING (Fill in the Blanks):
+1. The student is ONLY required to type the ordered list of words (e.g. "reduced, incentives, renewable, sustainable"). Do NOT ask or expect them to write the full paragraph.
+2. Extract the bracketed words [word] from the Reference Text in order.
+3. Compare Diana's Answer with the expected bracketed words.
+4. If Diana's words match the expected bracketed words in order, give FULL SCORES (90 overall, 90 grammar, 90 fluency/pronunciation) and compliment her for the correct ordering without mentioning full paragraph formatting.
 
 Return ONLY raw JSON (NO Markdown):
 {{
   "transcription": "{user_response}",
-  "fluency_score": 85,
-  "pronunciation_score": 85,
-  "grammar_vocab_score": 88,
-  "overall_pte_score": 86,
+  "fluency_score": 90,
+  "pronunciation_score": 90,
+  "grammar_vocab_score": 90,
+  "overall_pte_score": 90,
   "status": "PASS",
   "words_result": [],
-  "error_analysis": "Análisis detallado en español de la precisión y ortografía de Diana.",
-  "correct_form": "{reference_text}",
-  "actionable_tips": "Consejo técnico para la sección de PTE Academic."
+  "error_analysis": "Explicación en español si hubo alguna palabra incorrecta o desordenada. Si todo está correcto, felicitar a Diana por la precisión.",
+  "correct_form": "Lista correcta de palabras en orden.",
+  "actionable_tips": "Consejo técnico clave para la sección de Reading del PTE Academic."
 }}
 Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_score are ALL valid integers (0-90).
 """
@@ -222,12 +219,11 @@ Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_
 
         cleaned_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", completion.choices[0].message.content.strip(), flags=re.MULTILINE).strip()
         data = json.loads(cleaned_json)
-        
-        # Garantizar que ningún campo retorne None/undefined
+
         if "fluency_score" not in data or data["fluency_score"] is None:
-            data["fluency_score"] = data.get("overall_pte_score", 80)
+            data["fluency_score"] = data.get("overall_pte_score", 90)
         if "pronunciation_score" not in data or data["pronunciation_score"] is None:
-            data["pronunciation_score"] = data.get("grammar_vocab_score", 80)
+            data["pronunciation_score"] = data.get("grammar_vocab_score", 90)
 
         return PTEEvaluationResponse(**data)
 
@@ -237,4 +233,4 @@ Ensure fluency_score, pronunciation_score, grammar_vocab_score, and overall_pte_
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "PTE Fixed Evaluation Engine"}
+    return {"status": "ok", "mode": "Reading List Evaluation Fixed"}
