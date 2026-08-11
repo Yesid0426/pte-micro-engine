@@ -1,6 +1,7 @@
 import json
 from typing import List, Literal
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
@@ -9,7 +10,16 @@ app = FastAPI(
     description="Backend minimalista para evaluación de fluidez y precisión PTE"
 )
 
-# Inicializar cliente de OpenAI (utiliza automáticamente OPENAI_API_KEY del entorno)
+# Permitir peticiones desde cualquier origen (CORS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Inicializar cliente de OpenAI
 client = OpenAI()
 
 
@@ -34,12 +44,6 @@ async def evaluate_audio(
     audio_file: UploadFile = File(...),
     reference_text: str = Form(...)
 ):
-    """
-    Recibe un archivo de audio (m4a, mp3, wav, etc.) y el texto de referencia.
-    1. Transcribe con Whisper.
-    2. Compara y evalúa con GPT-4o.
-    3. Devuelve JSON estructurado sin demoras.
-    """
     try:
         # 1. Transcripción del audio usando OpenAI Whisper
         transcription_response = client.audio.transcriptions.create(
