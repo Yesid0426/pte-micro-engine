@@ -1,16 +1,13 @@
-import json
+import os
 from typing import List, Literal
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from openai import OpenAI
+from groq import Groq
 
-app = FastAPI(
-    title="PTE Micro-Exam Engine",
-    description="Backend minimalista para evaluación de fluidez y precisión PTE"
-)
+app = FastAPI(title="PTE Micro-Exam Engine - Groq Free Tier")
 
-# Permitir peticiones desde cualquier origen (CORS)
+# Permitir solicitudes CORS desde archivos locales
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,25 +16,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicializar cliente de OpenAI
-client = OpenAI()
+# Cliente de Groq (lee la variable GROQ_API_KEY)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-
-# --- ESQUEMAS DE RESPUESTA (PYDANTIC) ---
 
 class WordResult(BaseModel):
     word: str
     status: Literal["correct", "incorrect", "missed"]
 
 class PTEEvaluationResponse(BaseModel):
-    transcription: str = Field(..., description="Texto transcrito por Whisper")
-    fluency_score: int = Field(..., description="Puntaje de fluidez de 0 a 100")
-    accuracy_score: int = Field(..., description="Puntaje de precisión de 0 a 100")
+    transcription: str
+    fluency_score: int
+    accuracy_score: int
     status: Literal["PASS", "RETRY"]
     words_result: List[WordResult]
 
-
-# --- ENDPOINT PRINCIPAL ---
 
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
 async def evaluate_audio(
@@ -45,15 +38,16 @@ async def evaluate_audio(
     reference_text: str = Form(...)
 ):
     try:
-        # 1. Transcripción del audio usando OpenAI Whisper
+        # 1. Transcripción del audio con Whisper en Groq (Gratis)
+        audio_content = await audio_file.read()
         transcription_response = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=(audio_file.filename, audio_file.file, audio_file.content_type),
+            file=(audio_file.filename, audio_content),
+            model="whisper-large-v3-turbo",
+            response_format="json",
             language="en"
         )
         transcribed_text = transcription_response.text.strip()
 
-        # Caso en que no se detecte voz en el audio
         if not transcribed_text:
             return PTEEvaluationResponse(
                 transcription="",
@@ -66,46 +60,47 @@ async def evaluate_audio(
                 ]
             )
 
-        # 2. Evaluación con GPT-4o
-        system_prompt = (
-            "Eres el algoritmo de evaluación de un examen PTE Academic.\n"
-            "Compara el texto transcrito del estudiante con el texto de referencia original.\n\n"
-            "REGLAS DE EVALUACIÓN:\n"
-            "1. 'fluency_score' (0-100): Mide si la respuesta es fluida. Penaliza si hay muletillas (eh, um), "
-            "repeticiones o inconsistencias severas en la estructura hablada.\n"
-            "2. 'accuracy_score' (0-100): Porcentaje aproximado de palabras clave bien pronunciadas/capturadas.\n"
-            "3. 'status': 'PASS' si ambos puntajes son >= 65, de lo contrario 'RETRY'.\n"
-            "4. 'words_result': Mapea CADA palabra del texto de referencia e indica si fue 'correct', "
-            "'incorrect' o 'missed'.\n"
-            "Sé rápido, objetivo y no agregues ningún tipo de texto descriptivo ni explicaciones."
-        )
+        # 2. Evaluación del texto usando Llama-3 en Groq (Gratis)
+        prompt = f"""
+Eres un evaluador de pronunciación para el examen PTE Academic.
+Compara la transcripción con la frase original.
 
-        user_content = f"""
-        Texto de referencia: "{reference_text}"
-        Transcripción del usuario: "{transcribed_text}"
-        """
+Texto de referencia: "{reference_text}"
+Transcripción del usuario: "{transcribed_text}"
 
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            response_format=PTEEvaluationResponse,
+Responde UNICAMENTE en formato JSON estricto con esta estructura exacta:
+{{
+  "transcription": "{transcribed_text}",
+  "fluency_score": 85,
+  "accuracy_score": 90,
+  "status": "PASS",
+  "words_result": [
+    {{"word": "palabra1", "status": "correct"}},
+    {{"word": "palabra2", "status": "incorrect"}}
+  ]
+}}
+Reglas:
+- fluency_score (0-100) y accuracy_score (0-100).
+- status: "PASS" si ambos son >= 65, sino "RETRY".
+- Mapea CADA palabra de la frase de referencia original indicando "correct", "incorrect" o "missed".
+"""
+
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
             temperature=0.1
         )
 
-        evaluation_result = completion.choices[0].message.parsed
-        evaluation_result.transcription = transcribed_text
-
-        return evaluation_result
+        response_content = completion.choices[0].message.content
+        import json
+        data = json.loads(response_content)
+        return PTEEvaluationResponse(**data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en el procesamiento: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en la evaluación: {str(e)}")
 
-
-# --- COMPROBACIÓN DE SALUD ---
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "PTE Micro-Exam Engine"}
+    return {"status": "ok", "provider": "Groq Free Tier"}
