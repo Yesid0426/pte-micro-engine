@@ -1,13 +1,17 @@
 import os
 import json
 import re
+import io
+import random
 from typing import List, Literal, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
+from gtts import gTTS
 
-app = FastAPI(title="PTE Academic Dynamic Exam Engine - Infinite Questions")
+app = FastAPI(title="PTE Academic Full Native Audio Simulator")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,15 +46,15 @@ class GeneratedQuestionResponse(BaseModel):
     text: str
 
 
-# --- ENDPOINT 1: GENERADOR DINÁMICO DE PREGUNTAS INFINITAS ---
+# --- ENDPOINT 1: GENERADOR DE PREGUNTAS INFINITAS ---
 @app.post("/generate-question", response_model=GeneratedQuestionResponse)
 async def generate_question(module: str = Form(...)):
     try:
         prompts = {
-            "SPEAKING": "Generate a single official Pearson PTE Academic 'Read Aloud' paragraph (40-60 words) on a scientific, environmental, or academic topic.",
-            "WRITING": "Generate an official Pearson PTE Academic 'Write Essay' prompt (e.g. 'Some people believe... Write 200-300 words').",
-            "READING": "Generate an official Pearson PTE Academic 'Reading: Fill in the Blanks' academic passage (50-70 words) with bracketed key vocabulary words like [reduced] or [incentives].",
-            "LISTENING": "Generate an official Pearson PTE Academic 'Write From Dictation' academic sentence (8-14 words)."
+            "SPEAKING": "Generate a single official Pearson PTE Academic 'Read Aloud' paragraph (40-55 words) on an academic topic.",
+            "WRITING": "Generate an official Pearson PTE Academic 'Write Essay' prompt (e.g. 'Some people argue that... Write 200-300 words').",
+            "READING": "Generate an official Pearson PTE Academic 'Reading: Fill in the Blanks' passage (50-70 words) with key vocabulary words in brackets like [reduced] or [incentives].",
+            "LISTENING": "Generate an official Pearson PTE Academic 'Write From Dictation' academic sentence (9-14 words)."
         }
 
         selected_prompt = prompts.get(module.upper(), prompts["SPEAKING"])
@@ -81,7 +85,29 @@ async def generate_question(module: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Error generando pregunta: {str(e)}")
 
 
-# --- ENDPOINT 2: EVALUACIÓN RIGUROSA DE SPEAKING (AUDIO) ---
+# --- ENDPOINT 2: GENERADOR DE AUDIO EN INGLÉS NATIVO (TTS MP3) ---
+@app.get("/get-audio")
+async def get_audio(text: str):
+    try:
+        # Rotación aleatoria de acentos nativos (EE. UU., Reino Unido, Australia)
+        accents = [
+            {'tld': 'us', 'lang': 'en'}, # American English
+            {'tld': 'co.uk', 'lang': 'en'}, # British English
+            {'tld': 'com.au', 'lang': 'en'} # Australian English
+        ]
+        chosen_accent = random.choice(accents)
+
+        tts = gTTS(text=text, lang=chosen_accent['lang'], tld=chosen_accent['tld'], slow=False)
+        mp3_fp = io.BytesIO()
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
+
+        return Response(content=mp3_fp.read(), media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al generar audio: {str(e)}")
+
+
+# --- ENDPOINT 3: EVALUACIÓN RIGUROSA DE SPEAKING (AUDIO) ---
 @app.post("/evaluate-audio", response_model=PTEEvaluationResponse)
 async def evaluate_audio(
     audio_file: UploadFile = File(...),
@@ -111,7 +137,7 @@ async def evaluate_audio(
                 words_result=[WordResult(word=w, status="missed") for w in reference_text.split()],
                 error_analysis="CERO PUNTOS: No se detectó voz clara en tu respuesta, Diana.",
                 correct_form=reference_text,
-                actionable_tips="En el examen oficial del PTE, si hay 3 segundos de silencio el micrófono se apaga automáticamente."
+                actionable_tips="En el examen oficial de PTE, si hay 3 segundos de silencio el micrófono se apaga automáticamente."
             )
 
         prompt = f"""You are a RIGOROUS Pearson PTE Academic AI Examiner assessing Diana's Speaking.
@@ -119,8 +145,8 @@ Question Type: {question_type}
 Reference Text: "{reference_text}"
 Diana's Audio Transcription: "{transcribed_text}"
 
-Evaluate strictly (0-90 Pearson Score Matrix):
-1. Oral Fluency (0-90): Heavily penalize hesitations, self-corrections, pauses (>1s), and irregular rhythm.
+Evaluate strictly according to Pearson PTE Score Matrix (0-90):
+1. Oral Fluency (0-90): Penalize hesitations, self-corrections, pauses (>1s), and unnatural speed.
 2. Pronunciation (0-90): Phoneme clarity and correct stress.
 3. Overall Score: Target >= 79.
 
@@ -136,7 +162,7 @@ Return ONLY raw JSON (NO Markdown):
     {{"word": "example", "status": "correct"}}
   ],
   "error_analysis": "Análisis riguroso en español directo para Diana indicando errores específicos.",
-  "correct_form": "Lectura modelo con grupos de pausa adecuados (chunking).",
+  "correct_form": "Lectura modelo con pausa adecuada (chunking).",
   "actionable_tips": "Estrategia técnica para alcanzar 79+ en el examen real."
 }}
 Map EVERY word of the reference text in words_result with 'correct', 'incorrect', or 'missed'.
@@ -155,7 +181,7 @@ Map EVERY word of the reference text in words_result with 'correct', 'incorrect'
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- ENDPOINT 3: EVALUACIÓN RIGUROSA DE TEXTO (WRITING / READING / LISTENING) ---
+# --- ENDPOINT 4: EVALUACIÓN RIGUROSA DE TEXTO (WRITING / READING / LISTENING) ---
 @app.post("/evaluate-text", response_model=PTEEvaluationResponse)
 async def evaluate_text(
     user_response: str = Form(...),
@@ -170,8 +196,6 @@ Diana's Response: "{user_response}"
 
 Evaluate strictly according to official Pearson criteria (0-90):
 - Grammar, Spelling, Vocabulary, and Structural Coherence.
-- For Summarize Written Text: Must be ONE single sentence (5-75 words) ending in a period.
-- For Write Essay: Must be 200-300 words with structured paragraphs.
 - For Write From Dictation: Exact word-for-word matching.
 
 Return ONLY raw JSON (NO Markdown):
@@ -183,7 +207,7 @@ Return ONLY raw JSON (NO Markdown):
   "overall_pte_score": 75,
   "status": "RETRY",
   "words_result": [],
-  "error_analysis": "Explicación detallada en español de errores de ortografía, gramática o estructura.",
+  "error_analysis": "Explicación detallada en español de errores de ortografía, gramática o palabras omitidas.",
   "correct_form": "Respuesta perfeccionada para nivel 90.",
   "actionable_tips": "Consejo directo para maximizar la nota en esta sección."
 }}
@@ -204,4 +228,4 @@ Return ONLY raw JSON (NO Markdown):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Infinite Question PTE Simulator"}
+    return {"status": "ok", "mode": "PTE Audio Simulator Active"}
